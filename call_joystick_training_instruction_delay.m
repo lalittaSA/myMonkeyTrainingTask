@@ -5,7 +5,7 @@ close all;
 topsDataLog.flushAllData();
 
 % input = number of trials (per conditions)
-[task list] = joystick_training_instruction(0);
+[task list] = joystick_training_instruction_delay(0);
 
 % visualize the task's structure
 % tree.gui();
@@ -36,6 +36,13 @@ nTrials = list{'Counter'}{'nTrials'};
 meta_data.nTrials = nTrials;
 meta_data.angleLimit = list{'Input'}{'angleLimit'};
 
+meta_data.delayFix = list{'Timing'}{'delayFix'};
+meta_data.delayVar = list{'Timing'}{'delayVar'};
+meta_data.responsewindow = list{'Timing'}{'responsewindow'};
+meta_data.itiSucc = list{'Timing'}{'itiSucc'};
+meta_data.itiErr = list{'Timing'}{'itiErr'};
+
+fixTime = list{'Timing'}{'fixTime'};
 stimTime = list{'Stimulus'}{'stimTime'};
 freqStim = list{'Stimulus'}{'freq'};
 isH = list{'Stimulus'}{'isH'};
@@ -51,7 +58,7 @@ choices = list{'Input'}{'choices'};
 RTs = list{'Input'}{'RTs'};
 MTs = list{'Input'}{'MTs'};
 
-data_table1 = table((1:nTrials)',stimTime,freqStim,isH,moveStart,moveEnd,moveAngle,freq,joystickTraces,corrects,choices,RTs,MTs,'VariableNames',{'trialID','stimTime','stimFreq','isHigh','moveStartTime','moveEndTime','moveAngle','feedbackFreq','moveTraces','correct','choice','RT','MT'});
+data_table = table((1:nTrials)',fixTime,stimTime,freqStim,isH,moveStart,moveEnd,moveAngle,freq,joystickTraces,corrects,choices,RTs,MTs,'VariableNames',{'trialID','fixTime','stimTime','stimFreq','isHigh','moveStartTime','moveEndTime','moveAngle','feedbackFreq','moveTraces','correct','choice','RT','MT'});
 
 %% Saving
 save([data_folder save_filename '_list.mat'], 'list');

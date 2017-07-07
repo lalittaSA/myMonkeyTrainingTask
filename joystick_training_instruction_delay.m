@@ -1,12 +1,14 @@
-function [task, list] = joystick_training_instruction(dispInd)
+function [task, list] = joystick_training_instruction_delay(dispInd)
 
-% 20170329: created by Lalitta - joystick training task for monkeys - 
+% 20170707: created by Lalitta - joystick training task for monkeys - 
 % the task gives auditive instruction and generates auditory feedback for joystick movement: 
-% high freq instruction requires outward movement (upward for cursor on the screen) - play high freq tone during movement
-% low freq instruction requires inward movement (downward in screen) - play low freq tone during movement
+% high freq instruction requires outward movement (upward for cursor on the screen) - play high freq tone during movement (adjustable level)
+% low freq instruction requires inward movement (downward in screen) - play low freq tone during movement (adjustable)
 % stimulus-response combinations: high - left | low - right 
 % using mouse or joystick (with usb port)
 % + keyboard input: p for pause | r for resume | q for quit
+% + blockwise / random options: h for high | l for low | number(1-9) for blocksizes | m for intermixed (random) 
+% + soundlevel: f for higher feedback (movement sound) | d for lower feedback | s for higher reward sound | a for lower reward sound
 
 % Returns a a topsTreeNode object which organizes tasks and trials.
 % the object's run() method will start the task.  The object's gui() method
@@ -56,6 +58,9 @@ if subj_id == 'miya'
     hd.loFreq = 1000; %hz   4000 | 2000 | 1000 |  500 | 250
     hd.hiFreq = 8000; %hz  8000 | 4000 | 2000 | 1000 | 500
 elseif subj_id == 'cass'
+    hd.loFreq = 500;   % 4000 | 2000 | 1000 |  500 | 250
+    hd.hiFreq = 4000;   % 8000 | 4000 | 2000 | 1000 | 500
+else
     hd.loFreq = 500;   % 4000 | 2000 | 1000 |  500 | 250
     hd.hiFreq = 4000;   % 8000 | 4000 | 2000 | 1000 | 500
 end
@@ -221,8 +226,13 @@ list{'Input'}{'angleLimit'} = 30;
 list{'Input'}{'moveAngle'} = nan(nTrials,1);
 list{'Input'}{'freq'} = nan(nTrials,1);
 
-list{'Input'}{'responsewindow'} = 5;
-
+%% 
+list{'Timing'}{'delayFix'} = 0.1;
+list{'Timing'}{'delayVar'} = 0.1;
+list{'Timing'}{'responsewindow'} = 3;
+list{'Timing'}{'itiSucc'} = 1;
+list{'Timing'}{'itiErr'} = 5;
+list{'Timing'}{'fixTime'} = nan(nTrials,1);
 
 %% Graphics
 
@@ -323,6 +333,8 @@ list{'Counter'}{'isPause'} = isPause;
 ensemble = list{'Graphics'}{'ensemble'};
 cursor = list{'Graphics'}{'cursor'};
 ensemble.setObjectProperty('isVisible', true, cursor);
+ensemble.setObjectProperty('isVisible', true, cursor);
+ensemble.setObjectProperty('colors', [0.5 0.5 0.5], cursor);
 
 counter = list{'Counter'}{'trial'};
 counter = counter + 1;
@@ -332,7 +344,10 @@ end
 
 function checkJoystick(list)
 joystick = list{'Input'}{'Controller'};
-
+fixTimes = list{'Timing'}{'fixTime'};
+counter = list{'Counter'}{'trial'};
+delay = list{'Timing'}{'delayFix'} + rand(1)*list{'Timing'}{'delayVar'};
+% check if joystick is in the middle
 joystick.read();
 screen = list{'Graphics'}{'screen'};
 scaleFac = screen.pixelsPerDegree;
@@ -341,6 +356,7 @@ mYprev = 0;
 sensitivityFac = 0.6*0.9; %.6*0.9; -- might want to lower this for motor error
 lastTenMoves = ones(10,1);
 ii = 1;
+fixOn = 0;
 while 1
     joystick.read();
     mXcurr = joystick.x/scaleFac; mYcurr = -joystick.y/scaleFac;
@@ -351,13 +367,26 @@ while 1
     ii = ii+1;
     mXprev = mXcurr;
     mYprev = mYcurr;
-    if all(~lastTenMoves)
-        joystick.flushData();
+    if all(~lastTenMoves) 
+        if fixOn == 0
+            joystick.flushData();
+            fixOn = 1;
+            tic
+        end
+    else
+        fixOn = 0;
+    end
+    % wait - fixation time
+    if toc >= delay && fixOn == 1
         break;
     end
+        
     pause(0.005)
 end
 
+fixTime = toc;
+fixTimes(counter) = fixTime;
+list{'Timing'}{'fixTime'} = fixTimes;
 end
 
 function playstim(list)
@@ -400,10 +429,9 @@ if tmp_isH
 else
     cur_freq = hd.loFreq;
 end
-    
-   
-% play stimulus
 instruct.freq = cur_freq;
+
+% play stimulus
 instruct.prepareToPlay;
 instruct.play
 
@@ -426,7 +454,6 @@ joystick = list{'Input'}{'Controller'};
 keyboard = list{'Input'}{'Controller_kb'};
 
 mouseMarker = list{'Graphics'}{'mouseMarker'};
-mouseMarker.colors = [0.5 0.5 0.5];
 screen = list{'Graphics'}{'screen'};
 
 jtTraces = list{'Input'}{'joystickTraces'};
@@ -460,6 +487,7 @@ ii = 1;
 joystick.read();
 cur_trace = [];
 isCorrect = 0;
+errRT = 0;
 
 ini_choice = 0;
 def_choice = 0;
@@ -468,7 +496,8 @@ choice = 0;
 rt = NaN;
 mt = NaN;
 
-responsewindow = list{'Input'}{'responsewindow'};
+
+responsewindow = list{'Timing'}{'responsewindow'};
 whatsNext = '';
 
 tic 
@@ -508,7 +537,7 @@ while sqrt((mouseMarker.x)^2+(mouseMarker.y)^2) < 20
                 feedback.play;
                 isMoving = 1;
                 freq(counter) = feedback.freq;
-                moveTime(counter) = feedback.playTime;
+                moveTime(counter) = instruct.stopTime;
 %             end
             moveAngle(counter) = rotatedAngle;
             if rotatedAngle < 90
@@ -540,6 +569,7 @@ while sqrt((mouseMarker.x)^2+(mouseMarker.y)^2) < 20
         if choice > 0
             if isH(counter) && choice == 2, isCorrect = 1; end
             if ~isH(counter) && choice == 1, isCorrect = 1; end
+            if rt<0.3, isCorrect = 0; errRT = 1; end
         end
         
         feedback.stop;
@@ -580,7 +610,7 @@ while sqrt((mouseMarker.x)^2+(mouseMarker.y)^2) < 20
                 else
                     whatsNext = 'Feedback level is increased';
                 end
-                tmp_feedback = feedback.intensity
+                tmp_feedback = feedback.intensity;
                 list{'Stimulus'}{'feedback'} = feedback;
             case 'feedBackDown'
                 feedback = list{'Stimulus'}{'feedback'};
@@ -591,7 +621,7 @@ while sqrt((mouseMarker.x)^2+(mouseMarker.y)^2) < 20
                 else
                     whatsNext = 'Feedback level is decreased';
                 end
-                tmp_feedback = feedback.intensity
+                tmp_feedback = feedback.intensity;
                 list{'Stimulus'}{'feedback'} = feedback;
                 
             case 'rewardSoundUp'
@@ -647,23 +677,28 @@ while sqrt((mouseMarker.x)^2+(mouseMarker.y)^2) < 20
     end
 end
 
-if ~isempty(whatsNext)
-    disp(whatsNext)
-end
-
 if isCorrect
     feedback2 = list{'Stimulus'}{'pos_feedback'};
     mouseMarker = list{'Graphics'}{'mouseMarker'};
-    mouseMarker.colors = [0 1 0];
-    mouseMarker.draw
+    mouseMarker.colors = [0 1 0];  
 else
     feedback2 = list{'Stimulus'}{'neg_feedback'};
     mouseMarker = list{'Graphics'}{'mouseMarker'};
-    mouseMarker.colors = [1 0 0];
-    mouseMarker.draw
+    if errRT
+        mouseMarker.colors = [0.5 0.5 0];
+    else
+        mouseMarker.colors = [1 0 0];
+    end
 end
+mouseMarker.draw
+screen.nextFrame();
+
 feedback2.prepareToPlay;
 feedback2.play;
+
+if ~isempty(whatsNext)
+    disp(whatsNext)
+end
 
 corrects(counter) = isCorrect;
 choices(counter) = choice;
@@ -706,9 +741,10 @@ isQuit = list{'Counter'}{'isQuit'};
 nTrials = list{'Counter'}{'nTrials'};
 counter = list{'Counter'}{'trial'};
 mainTree = list{'Control'}{'mainTree'};
+corrects = list{'Input'}{'corrects'};
 
 if isQuit || counter == mainTree.iterations
-    
+    fixTime = list{'Timing'}{'fixTime'};
     stimTime = list{'Stimulus'}{'stimTime'};
     freqStim = list{'Stimulus'}{'freq'};
     isH = list{'Stimulus'}{'isH'};
@@ -718,8 +754,7 @@ if isQuit || counter == mainTree.iterations
     endTime = list{'Input'}{'endTime'};
     moveAngle = list{'Input'}{'moveAngle'};
     freq = list{'Input'}{'freq'};
-    
-    corrects = list{'Input'}{'corrects'};
+
     choices = list{'Input'}{'choices'};
     RTs = list{'Input'}{'RTs'};
     MTs = list{'Input'}{'MTs'};
@@ -728,6 +763,7 @@ if isQuit || counter == mainTree.iterations
         mainTree.iterations = counter;
         nTrials = counter;
         
+        fixTime = fixTime(1:counter,1);
         stimTime = stimTime(1:counter,1);
         freqStim = freqStim(1:counter,1);
         isH = isH(1:counter,1);
@@ -747,6 +783,7 @@ if isQuit || counter == mainTree.iterations
         nTrials = nTrials*2;
         mainTree.iterations = nTrials;
         
+        fixTime = [fixTime;nan(nTrials,1)];
         stimTime = [stimTime;nan(nTrials,1)];
         freqStim = [freqStim;nan(nTrials,1)];
         isH = [isH;nan(nTrials,1)];
@@ -766,6 +803,7 @@ if isQuit || counter == mainTree.iterations
     list{'Counter'}{'nTrials'} = nTrials;
     list{'Control'}{'mainTree'} = mainTree;
     
+    list{'Timing'}{'fixTime'} = fixTime;
     list{'Stimulus'}{'stimTime'} = stimTime;
     list{'Stimulus'}{'freq'} = freqStim;
     list{'Stimulus'}{'isH'} = isH;
@@ -786,13 +824,13 @@ data_folder = '/Research/uPenn_auditoryDecision/data/monkeyTraining/';
 save_filename = list{'meta'}{'saveFilename'};
 save([data_folder save_filename '_list.mat'], 'list');
 
-pause(1)
+% pause(1)
 
-% if corrects(counter)
-%     pause(2)
-% else
-%     pause(6)
-% end
+if corrects(counter)
+    pause(list{'Timing'}{'itiSucc'})
+else
+    pause(list{'Timing'}{'itiErr'})
+end
 end
 
 
