@@ -1,6 +1,6 @@
 function [task, list] = joystick_training_instruction_delay(dispInd)
 
-% 20170707: created by Lalitta - joystick training task for monkeys - 
+% 20170712: created by Lalitta - joystick training task for monkeys - 
 % the task gives auditive instruction and generates auditory feedback for joystick movement: 
 % high freq instruction requires outward movement (upward for cursor on the screen) - play high freq tone during movement (adjustable level)
 % low freq instruction requires inward movement (downward in screen) - play low freq tone during movement (adjustable)
@@ -9,6 +9,7 @@ function [task, list] = joystick_training_instruction_delay(dispInd)
 % + keyboard input: p for pause | r for resume | q for quit
 % + blockwise / random options: h for high | l for low | number(1-9) for blocksizes | m for intermixed (random) 
 % + soundlevel: f for higher feedback (movement sound) | d for lower feedback | s for higher reward sound | a for lower reward sound
+% + possibility to press q to quit the task during pause & joystick hold (when subject don't release the joystick to the center position)
 
 % Returns a a topsTreeNode object which organizes tasks and trials.
 % the object's run() method will start the task.  The object's gui() method
@@ -55,14 +56,20 @@ list{'meta'}{'saveFilename'} = save_filename;
 
 %% audio settings
 if subj_id == 'miya'
-    hd.loFreq = 1000; %hz   4000 | 2000 | 1000 |  500 | 250
-    hd.hiFreq = 8000; %hz  8000 | 4000 | 2000 | 1000 | 500
+    hd.loFreq = 500; %hz   4000 | 2000 | 1000 |  500 | 250
+    hd.hiFreq = 4000; %hz  8000 | 4000 | 2000 | 1000 | 500
+    delayFix = 0.1;
+    delayVar = 0.1;
 elseif subj_id == 'cass'
     hd.loFreq = 500;   % 4000 | 2000 | 1000 |  500 | 250
     hd.hiFreq = 4000;   % 8000 | 4000 | 2000 | 1000 | 500
+    delayFix = 0.2;
+    delayVar = 0.2;
 else
     hd.loFreq = 500;   % 4000 | 2000 | 1000 |  500 | 250
     hd.hiFreq = 4000;   % 8000 | 4000 | 2000 | 1000 | 500
+    delayFix = 0.5;
+    delayVar = 0.5;
 end
 
 hd.fs = 44100;%384000;
@@ -80,15 +87,15 @@ feedback = dotsPlayableFreq();
 feedback.sampleFrequency = hd.fs;
 feedback.duration = 5000;
 % feedback.frequency = hd.hiFreq;
-feedback.intensity = 0;
+feedback.intensity = 0.4;
 
 % Feedback 
 pos_feedback = dotsPlayableFile();
 pos_feedback.fileName = 'Coin.wav';
-pos_feedback.intensity = 0;
+pos_feedback.intensity = 0.2;
 neg_feedback = dotsPlayableFile();
 neg_feedback.fileName = 'beep-02.wav';
-neg_feedback.intensity = 0;
+neg_feedback.intensity = 0.2;
 
 % STIMULUS
 list{'Stimulus'}{'header'} = hd;
@@ -227,8 +234,8 @@ list{'Input'}{'moveAngle'} = nan(nTrials,1);
 list{'Input'}{'freq'} = nan(nTrials,1);
 
 %% 
-list{'Timing'}{'delayFix'} = 0.1;
-list{'Timing'}{'delayVar'} = 0.1;
+list{'Timing'}{'delayFix'} = delayFix;
+list{'Timing'}{'delayVar'} = delayVar;
 list{'Timing'}{'responsewindow'} = 3;
 list{'Timing'}{'itiSucc'} = 1;
 list{'Timing'}{'itiErr'} = 5;
@@ -280,7 +287,8 @@ list{'Control'}{'trial calls'} = trialCalls;
 % State Machine, for use in maintask
 mainMachine = topsStateMachine();
 mainStates = {'name', 'entry', 'input', 'exit', 'timeout', 'next';
-                 'CheckReady', {@startTrial list}, {}, {@checkJoystick list}, 0, 'Stimulus';
+                 'StartTrial', {}, {@startTrial list}, {}, 0, 'CheckReady';
+                 'CheckReady', {}, {@checkJoystick list}, {}, 0, 'Stimulus';
                  'Stimulus', {@playstim list}, {}, {}, 0, 'CheckResponse';
                  'CheckResponse', {@MoveMarkerAndPlayFeedback list}, {}, {}, 0, 'Exit';
                  'Exit',{@finishTrial list}, {}, {}, 0.1,''};
@@ -309,45 +317,57 @@ end
 
 %% Accessory Functions
 
-function startTrial(list)
+function next = startTrial(list)
 % clear data from the last trial
 joystick = list{'Input'}{'Controller'};
 joystick.flushData();
 keyboard = list{'Input'}{'Controller_kb'};
 keyboard.flushData();
 
-isPause = list{'Counter'}{'isPause'};
-
-while isPause
-    read(keyboard);
-    [~, ~, eventname, ~] = keyboard.getHappeningEvent();
-    if any(~isempty(eventname)) && strcmp(eventname{1},'resume') 
-        isPause = 0;
-        disp('task is resumed')
-        break
-    end
-end
-
-list{'Counter'}{'isPause'} = isPause;
-
-ensemble = list{'Graphics'}{'ensemble'};
-cursor = list{'Graphics'}{'cursor'};
-ensemble.setObjectProperty('isVisible', true, cursor);
-ensemble.setObjectProperty('isVisible', true, cursor);
-ensemble.setObjectProperty('colors', [0.5 0.5 0.5], cursor);
-
 counter = list{'Counter'}{'trial'};
 counter = counter + 1;
 list{'Counter'}{'trial'} = counter;
 
+isPause = list{'Counter'}{'isPause'};
+jumpToEnd = 0;
+while isPause
+    read(keyboard);
+    [~, ~, eventname, ~] = keyboard.getHappeningEvent();
+    if any(~isempty(eventname))
+        if strcmp(eventname{1},'resume')
+            isPause = 0;
+            disp('task is resumed')
+            break
+        elseif strcmp(eventname{1},'quit')
+            isPause = 0;
+            jumpToEnd = 1;
+            disp('task is quit')
+            break
+        end
+    end
 end
 
-function checkJoystick(list)
-joystick = list{'Input'}{'Controller'};
-fixTimes = list{'Timing'}{'fixTime'};
-counter = list{'Counter'}{'trial'};
+list{'Counter'}{'isQuit'} = jumpToEnd;
+list{'Counter'}{'isPause'} = isPause;
+
+if jumpToEnd
+    next = 'Exit';
+else
+    next = 'CheckReady';
+end
+
+end
+
+function next = checkJoystick(list)
+
 delay = list{'Timing'}{'delayFix'} + rand(1)*list{'Timing'}{'delayVar'};
+
 % check if joystick is in the middle
+joystick = list{'Input'}{'Controller'};
+keyboard = list{'Input'}{'Controller_kb'};
+
+isPause = list{'Counter'}{'isPause'};
+
 joystick.read();
 screen = list{'Graphics'}{'screen'};
 scaleFac = screen.pixelsPerDegree;
@@ -357,6 +377,8 @@ sensitivityFac = 0.6*0.9; %.6*0.9; -- might want to lower this for motor error
 lastTenMoves = ones(10,1);
 ii = 1;
 fixOn = 0;
+jumpToEnd = 0;
+startTimeLapse = tic;
 while 1
     joystick.read();
     mXcurr = joystick.x/scaleFac; mYcurr = -joystick.y/scaleFac;
@@ -367,26 +389,58 @@ while 1
     ii = ii+1;
     mXprev = mXcurr;
     mYprev = mYcurr;
-    if all(~lastTenMoves) 
+    if all(~lastTenMoves)
         if fixOn == 0
             joystick.flushData();
             fixOn = 1;
-            tic
+            startFix = tic;
         end
     else
         fixOn = 0;
     end
     % wait - fixation time
-    if toc >= delay && fixOn == 1
+    if fixOn == 1
+        fixTime = toc(startFix);
+        if fixTime >= delay
+            break;
+        end
+    end
+    if toc(startTimeLapse) > 300
+        isPause = 1;
+        disp('task is automatically paused')
         break;
     end
-        
+    
+    read(keyboard);
+    [~, ~, eventname, ~] = keyboard.getHappeningEvent();
+    if any(~isempty(eventname)) && strcmp(eventname{1},'quit')
+        jumpToEnd = 1;
+        disp('task is quit')
+        break
+    end
+    
     pause(0.005)
 end
 
-fixTime = toc;
-fixTimes(counter) = fixTime;
-list{'Timing'}{'fixTime'} = fixTimes;
+list{'Counter'}{'isQuit'} = jumpToEnd;
+list{'Counter'}{'isPause'} = isPause;
+
+if isPause || jumpToEnd
+    next = 'Exit';
+else
+    counter = list{'Counter'}{'trial'};
+    ensemble = list{'Graphics'}{'ensemble'};
+    cursor = list{'Graphics'}{'cursor'};
+    ensemble.setObjectProperty('isVisible', true, cursor);
+    ensemble.setObjectProperty('isVisible', true, cursor);
+    ensemble.setObjectProperty('colors', [0.5 0.5 0.5], cursor);
+    
+    fixTimes = list{'Timing'}{'fixTime'};
+    fixTimes(counter) = fixTime;
+    list{'Timing'}{'fixTime'} = fixTimes;
+    next = 'Stimulus';
+end
+
 end
 
 function playstim(list)
@@ -410,10 +464,16 @@ if isMixed
         tmp_isH = 0;
     end
 elseif isBlock && counter > 1
+    ii = 1;
+    previous_isH = isH(counter-ii);
+    while isnan(previous_isH)
+        previous_isH = isH(counter-ii);
+        ii = ii + 1;
+    end
     if nTrialsInBlock < blockSize
-        tmp_isH = isH(counter-1);       % stay
+        tmp_isH = previous_isH;       % stay
     else
-        tmp_isH = 1 - isH(counter-1);   % switch if the block size is reached
+        tmp_isH = 1 - previous_isH;   % switch if the block size is reached
         list{'Counter'}{'nTrialsInBlock'} = 0;
     end
 else
@@ -569,7 +629,7 @@ while sqrt((mouseMarker.x)^2+(mouseMarker.y)^2) < 20
         if choice > 0
             if isH(counter) && choice == 2, isCorrect = 1; end
             if ~isH(counter) && choice == 1, isCorrect = 1; end
-            if rt<0.3, isCorrect = 0; errRT = 1; end
+            if rt<0.1, isCorrect = 0; errRT = 1; end
         end
         
         feedback.stop;
@@ -824,12 +884,12 @@ data_folder = '/Research/uPenn_auditoryDecision/data/monkeyTraining/';
 save_filename = list{'meta'}{'saveFilename'};
 save([data_folder save_filename '_list.mat'], 'list');
 
-% pause(1)
-
-if corrects(counter)
-    pause(list{'Timing'}{'itiSucc'})
-else
-    pause(list{'Timing'}{'itiErr'})
+if ~isnan(corrects(counter))
+    if corrects(counter)
+        pause(list{'Timing'}{'itiSucc'})
+    else
+        pause(list{'Timing'}{'itiErr'})
+    end
 end
 end
 
