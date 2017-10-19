@@ -53,8 +53,8 @@ list{'meta'}{'saveFilename'} = save_filename;
 
 %% audio settings
 if subj_id == 'miya'
-    hd.loFreq = 1000; %hz   4000 | 2000 | 1000 |  500 | 250
-    hd.hiFreq = 8000; %hz  8000 | 4000 | 2000 | 1000 | 500
+    hd.loFreq = 250; %hz   4000 | 2000 | 1000 |  500 | 250
+    hd.hiFreq = 4000; %hz  8000 | 4000 | 2000 | 1000 | 500
 elseif subj_id == 'cass'
     hd.loFreq = 500;   % 4000 | 2000 | 1000 |  500 | 250
     hd.hiFreq = 4000;   % 8000 | 4000 | 2000 | 1000 | 500
@@ -75,15 +75,15 @@ feedback = dotsPlayableFreq();
 feedback.sampleFrequency = hd.fs;
 feedback.duration = 5000;
 % feedback.frequency = hd.hiFreq;
-feedback.intensity = 0;
+feedback.intensity = 0.4;
 
 % Feedback 
 pos_feedback = dotsPlayableFile();
 pos_feedback.fileName = 'Coin.wav';
-pos_feedback.intensity = 0;
+pos_feedback.intensity = 0.1;
 neg_feedback = dotsPlayableFile();
 neg_feedback.fileName = 'beep-02.wav';
-neg_feedback.intensity = 0;
+neg_feedback.intensity = 0.1;
 
 % STIMULUS
 list{'Stimulus'}{'header'} = hd;

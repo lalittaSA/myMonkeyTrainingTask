@@ -51,7 +51,7 @@ choices = list{'Input'}{'choices'};
 RTs = list{'Input'}{'RTs'};
 MTs = list{'Input'}{'MTs'};
 
-data_table1 = table((1:nTrials)',stimTime,freqStim,isH,moveStart,moveEnd,moveAngle,freq,joystickTraces,corrects,choices,RTs,MTs,'VariableNames',{'trialID','stimTime','stimFreq','isHigh','moveStartTime','moveEndTime','moveAngle','feedbackFreq','moveTraces','correct','choice','RT','MT'});
+data_table = table((1:nTrials)',stimTime,freqStim,isH,moveStart,moveEnd,moveAngle,freq,joystickTraces,corrects,choices,RTs,MTs,'VariableNames',{'trialID','stimTime','stimFreq','isHigh','moveStartTime','moveEndTime','moveAngle','feedbackFreq','moveTraces','correct','choice','RT','MT'});
 
 %% Saving
 save([data_folder save_filename '_list.mat'], 'list');
